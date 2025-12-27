@@ -21,7 +21,7 @@ Arx5JointController::Arx5JointController(std::string model, std::string interfac
 {
 }
 
-void Arx5JointController::set_joint_cmd(JointState new_cmd)
+void Arx5JointController::set_joint_cmd(JointState new_cmd, bool force_timestamp)
 {
     JointState current_joint_state = get_joint_state();
     double current_time = get_timestamp();
@@ -33,8 +33,43 @@ void Arx5JointController::set_joint_cmd(JointState new_cmd)
         // If the new timestamp is close enough (<1ms) to the current time
         // Will override the entire interpolator object
         interpolator_.init_fixed(new_cmd);
-    else
-        interpolator_.override_waypoint(get_timestamp(), new_cmd);
+    else {
+            interpolator_.override_waypoint(get_timestamp(), new_cmd);
+    }
+}
+
+void Arx5JointController::set_joint_cmd_plan(std::vector<JointState> cmd_plan)
+{
+    double current_time = get_timestamp();
+
+    // Validate the command plan
+    std::vector<JointState> valid_plan;
+    for (auto& cmd : cmd_plan) {
+        // Skip commands that are in the past
+        if (cmd.timestamp <= current_time) {
+            logger_->warn("set_joint_cmd_plan: Skipping command with timestamp {} <= current_time {}",
+                         cmd.timestamp, current_time);
+            logger_->warn("New timestamp: {}, current time: {}", cmd.timestamp, current_time);
+            continue;
+        }
+        // Accept commands within 0-10ms in the future
+        if (cmd.timestamp > current_time + 0.010) {
+            logger_->warn("set_joint_cmd_plan: Skipping command with timestamp {} > current_time + 10ms",
+                         cmd.timestamp);
+            logger_->warn("New timestamp: {}, current time: {}", cmd.timestamp, current_time);
+            continue;
+        }
+        valid_plan.push_back(cmd);
+    }
+
+    if (valid_plan.empty()) {
+        logger_->warn("set_joint_cmd_plan: No valid commands in plan");
+        return;
+    }
+
+    std::lock_guard<std::mutex> guard(cmd_mutex_);
+    // Use append_traj to add to existing trajectory without clearing old waypoints
+    interpolator_.append_traj(current_time, valid_plan);
 }
 
 void Arx5JointController::set_joint_traj(std::vector<JointState> new_traj)

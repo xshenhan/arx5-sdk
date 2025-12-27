@@ -24,7 +24,9 @@ class Arx5JointController : public Arx5ControllerBase
     Arx5JointController(RobotConfig robot_config, ControllerConfig controller_config, std::string interface_name);
     Arx5JointController(std::string model, std::string interface_name);
 
-    void set_joint_cmd(JointState new_cmd);
+    void set_joint_cmd(JointState new_cmd, bool force_timestamp = false);
+
+    void set_joint_cmd_plan(std::vector<JointState> cmd_plan);
 
     void set_joint_traj(std::vector<JointState> new_traj);
 

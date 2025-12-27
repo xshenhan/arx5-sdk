@@ -14,6 +14,7 @@ Arx5ControllerBase::Arx5ControllerBase(RobotConfig robot_config, ControllerConfi
       robot_config_(robot_config), controller_config_(controller_config)
 {
     start_time_us_ = get_time_us();
+    home_joint_pos_ = VecDoF::Zero(robot_config_.joint_dof);
     logger_->set_pattern("[%H:%M:%S %n %^%l%$] %v");
     solver_ = std::make_shared<Arx5Solver>(
         robot_config_.urdf_path, robot_config_.joint_dof, robot_config_.joint_pos_min, robot_config_.joint_pos_max,
@@ -130,6 +131,12 @@ double Arx5ControllerBase::get_timestamp()
 {
     return double(get_time_us() - start_time_us_) / 1e6;
 }
+
+double Arx5ControllerBase::get_start_timestamp()
+{
+    return double(start_time_us_) / 1e6;
+}
+
 RobotConfig Arx5ControllerBase::get_robot_config()
 {
     return robot_config_;
@@ -164,7 +171,7 @@ void Arx5ControllerBase::reset_to_home()
     JointState target_state{robot_config_.joint_dof};
 
     // calculate the maximum joint position error
-    double max_pos_error = (init_state.pos - VecDoF::Zero(robot_config_.joint_dof)).cwiseAbs().maxCoeff();
+    double max_pos_error = (init_state.pos - home_joint_pos_).cwiseAbs().maxCoeff();
     max_pos_error = std::max(max_pos_error, init_state.gripper_pos * 2 / robot_config_.gripper_width);
     // interpolate from current kp kd to default kp kd in max(max_pos_error, 0.5)s
     // and keep the target for max(max_pos_error, 0.5)s
@@ -176,7 +183,8 @@ void Arx5ControllerBase::reset_to_home()
     bool prev_running = background_send_recv_running_;
     background_send_recv_running_ = true;
     target_state.timestamp = get_timestamp() + wait_time;
-    target_state.pos[2] = 0.03; // avoiding clash
+    target_state.pos = home_joint_pos_;
+    target_state.pos[2] = home_joint_pos_[2] + 0.03; // avoiding clash
 
     {
         std::lock_guard<std::mutex> guard(cmd_mutex_);
@@ -195,7 +203,7 @@ void Arx5ControllerBase::reset_to_home()
         sleep_us(int(controller_config_.controller_dt * 1e6));
     }
 
-    target_state.pos[2] = 0.0;
+    target_state.pos[2] = home_joint_pos_[2];
     target_state.timestamp = get_timestamp() + 0.5;
     {
         std::lock_guard<std::mutex> guard(cmd_mutex_);
@@ -673,5 +681,30 @@ void Arx5ControllerBase::background_send_recv_()
 
 Pose6d Arx5ControllerBase::get_home_pose()
 {
-    return solver_->forward_kinematics(VecDoF::Zero(robot_config_.joint_dof));
+    return solver_->forward_kinematics(home_joint_pos_);
+}
+
+void Arx5ControllerBase::set_home_pose(VecDoF home_joint_pos)
+{
+    // Validate the input
+    if (home_joint_pos.size() != robot_config_.joint_dof)
+    {
+        logger_->error("Invalid home_joint_pos size: {} (expected {})", home_joint_pos.size(), robot_config_.joint_dof);
+        throw std::runtime_error("Invalid home_joint_pos size");
+    }
+
+    // Check joint limits
+    for (int i = 0; i < robot_config_.joint_dof; i++)
+    {
+        if (home_joint_pos[i] < robot_config_.joint_pos_min[i] ||
+            home_joint_pos[i] > robot_config_.joint_pos_max[i])
+        {
+            logger_->error("Joint {} home position {:.3f} is out of range [{:.3f}, {:.3f}]",
+                          i, home_joint_pos[i], robot_config_.joint_pos_min[i], robot_config_.joint_pos_max[i]);
+            throw std::runtime_error("Home joint position out of range");
+        }
+    }
+
+    home_joint_pos_ = home_joint_pos;
+    logger_->info("Home pose updated to: {}", vec2str(home_joint_pos_));
 }

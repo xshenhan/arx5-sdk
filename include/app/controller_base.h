@@ -25,10 +25,12 @@ class Arx5ControllerBase // parent class for the other two controllers
     JointState get_joint_state();
     EEFState get_eef_state();
     Pose6d get_home_pose();
+    void set_home_pose(VecDoF home_joint_pos);
     void set_gain(Gain new_gain);
     Gain get_gain();
 
     double get_timestamp();
+    double get_start_timestamp();
     RobotConfig get_robot_config();
     ControllerConfig get_controller_config();
     void set_log_level(spdlog::level::level_enum level);
@@ -45,6 +47,7 @@ class Arx5ControllerBase // parent class for the other two controllers
 
     JointState joint_state_{robot_config_.joint_dof};
     Gain gain_{robot_config_.joint_dof};
+    VecDoF home_joint_pos_{robot_config_.joint_dof};
     // bool prev_gripper_updated_ = false; // Declaring here leads to segfault
 
     ArxCan can_handle_;

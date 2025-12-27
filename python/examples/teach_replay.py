@@ -7,11 +7,10 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(ROOT_DIR)
 os.chdir(ROOT_DIR)
 from arx5_interface import Arx5CartesianController, EEFState, Gain
-
+import arx5_interface as arx5
 import time
 from peripherals.keystroke_counter import KeystrokeCounter, KeyCode
 import click
-
 
 def start_teaching(controller: Arx5CartesianController, data_file: str):
     controller.reset_to_home()
@@ -52,6 +51,8 @@ def start_teaching(controller: Arx5CartesianController, data_file: str):
                         "gripper_pos": state.gripper_pos,
                     }
                 )
+                print("pose_6d: ", state.pose_6d().copy())
+                print("arm_joint_position: ", np.array(controller.get_joint_state().pos()))
                 time.sleep(controller_config.controller_dt)
 
 
@@ -106,7 +107,12 @@ def start_high_level_replay(controller: Arx5CartesianController, data_file: str)
 @click.argument("model")  # ARX arm model: X5 or L5
 @click.argument("interface")  # can bus name (can0 etc.)
 def main(model: str, interface: str):
-    controller = Arx5CartesianController(model, interface)
+    robot_config = arx5.RobotConfigFactory.get_instance().get_config('L5')
+    robot_config.gravity_vector = np.array([9.81*np.sqrt(2)/2, 0, 9.81*np.sqrt(2)/2])
+    controller_config = arx5.ControllerConfigFactory.get_instance().get_config('joint_controller', robot_config.joint_dof)
+    controller = arx5.Arx5CartesianController(
+                robot_config, controller_config, 'can0'
+            )
 
     np.set_printoptions(precision=4, suppress=True)
     os.makedirs("data", exist_ok=True)

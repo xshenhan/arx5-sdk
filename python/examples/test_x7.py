@@ -20,24 +20,29 @@ def easeInOutQuad(t):
 
 def main():
     np.set_printoptions(precision=3, suppress=True)
-    x7_left = arx5.Arx5JointController("X7Left", "can0")
-    x7_left_config = x7_left.get_robot_config()
-    # x7_left = arx5.Arx5JointController("X7Left", "can1")
-    # x7_left.set_log_level(arx5.LogLevel.DEBUG)
-    # x7_left.reset_to_home()
-    gain = x7_left.get_gain()
+    robot_config = arx5.RobotConfigFactory.get_instance().get_config('L5')
+    robot_config.gravity_vector = np.array([9.81*np.sqrt(2)/2, 0, 9.81*np.sqrt(2)/2])
+    controller_config = arx5.ControllerConfigFactory.get_instance().get_config('joint_controller', robot_config.joint_dof)
+    L5 = arx5.Arx5JointController(robot_config, controller_config, 'can0')
+    # L5.set_home_pose(np.array([-1.93,   1.56,  2.14, -0.243, -0.127, -0.838]))
+    # print(L5.get_home_pose())
+    L5_config = L5.get_robot_config()
+    # L5 = arx5.Arx5JointController("X7Left", "can1")
+    # L5.set_log_level(arx5.LogLevel.DEBUG)
+    # L5.reset_to_home()
+    gain = L5.get_gain()
     gain.kp()[:] = 0
-    x7_left.set_gain(gain)
-    x7_left_solver = arx5.Arx5Solver(
-        "../models/arx7_left.urdf",
-        7,
-        x7_left_config.joint_pos_min,
-        x7_left_config.joint_pos_max,
+    L5.set_gain(gain)
+    L5_solver = arx5.Arx5Solver(
+        "../models/L5.urdf",
+        6,
+        L5_config.joint_pos_min,
+        L5_config.joint_pos_max,
     )
 
     while True:
-        joint_state = x7_left.get_joint_state()
-        ee_pose = x7_left_solver.forward_kinematics(joint_state.pos())
+        joint_state = L5.get_joint_state()
+        ee_pose = L5_solver.forward_kinematics(joint_state.pos())
         print(ee_pose, joint_state.pos())
         time.sleep(0.1)
 
